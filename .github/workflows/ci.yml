@@ -44,7 +44,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: install maturin + pytest
         run: pip install maturin pytest
-      - name: build + install wheel
-        run: maturin develop --release
+      - name: build wheel
+        run: maturin build --release --out dist
+      - name: install wheel
+        shell: bash
+        run: pip install --no-deps --force-reinstall dist/*.whl
       - name: smoke test
         run: python examples/smoke.py
