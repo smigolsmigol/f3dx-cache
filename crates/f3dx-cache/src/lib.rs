@@ -112,6 +112,10 @@ impl Cache {
 
     /// Look up a cached response by request value. Returns the response
     /// bytes if present + bumps the hit-count in meta.
+    ///
+    /// The hit-count bump is a separate write transaction (~1ms warm).
+    /// Use `peek` for sub-100us reads when hit-count tracking is not
+    /// needed (e.g. CI replay against a captured trace).
     pub fn get(&self, request: &serde_json::Value) -> Result<Option<Vec<u8>>> {
         let fp = fingerprint_value(request);
         let txn = self.db.begin_read()?;
@@ -125,6 +129,22 @@ impl Cache {
         // Bump hit count in a separate write txn so reads stay cheap.
         self.bump_hit(&fp)?;
         Ok(Some(resp))
+    }
+
+    /// Look up a cached response without bumping the hit-count.
+    ///
+    /// Sub-100us warm hit because there is no write transaction. Use
+    /// when stats accuracy is not needed: CI replay against captured
+    /// traces, hot loops where the response cardinality is known
+    /// independently, read-only inspection from a sidecar.
+    pub fn peek(&self, request: &serde_json::Value) -> Result<Option<Vec<u8>>> {
+        let fp = fingerprint_value(request);
+        let txn = self.db.begin_read()?;
+        let t_resp = txn.open_table(RESPONSES)?;
+        let Some(entry) = t_resp.get(fp.as_str())? else {
+            return Ok(None);
+        };
+        Ok(Some(entry.value().to_vec()))
     }
 
     fn bump_hit(&self, fp: &str) -> Result<()> {
@@ -243,5 +263,43 @@ mod tests {
         let stats = cache.stats().unwrap();
         assert_eq!(stats.entries, 1);
         assert_eq!(stats.hits, 1);
+    }
+
+    #[test]
+    fn peek_does_not_bump_hit_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().join("c.redb")).unwrap();
+        let req = json!({"model": "gpt-4", "messages": [{"role": "user", "content": "x"}]});
+        let resp = b"r";
+        let meta = CachedMeta {
+            created_at_ms: 0,
+            hit_count: 0,
+            model: None,
+            system_fingerprint: None,
+            response_duration_ms: None,
+        };
+        cache.put(&req, resp, &meta).unwrap();
+
+        // Three peeks should all return the bytes, but stats.hits stays 0.
+        for _ in 0..3 {
+            let got = cache.peek(&req).unwrap().unwrap();
+            assert_eq!(got, resp);
+        }
+        let stats = cache.stats().unwrap();
+        assert_eq!(stats.entries, 1);
+        assert_eq!(stats.hits, 0);
+
+        // Now exercise get() once and confirm hit_count moves to 1.
+        let _ = cache.get(&req).unwrap();
+        let stats = cache.stats().unwrap();
+        assert_eq!(stats.hits, 1);
+    }
+
+    #[test]
+    fn peek_returns_none_for_missing_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(dir.path().join("c.redb")).unwrap();
+        let req = json!({"model": "x", "messages": []});
+        assert!(cache.peek(&req).unwrap().is_none());
     }
 }

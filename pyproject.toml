@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "f3dx-cache"
-version = "0.0.2"
+version = "0.0.3"
 description = "Content-addressable LLM response cache + replay layer. redb + RFC 8785 JCS + BLAKE3. Drop-in for f3dx, openai, anthropic."
 readme = "README.md"
 requires-python = ">=3.10"

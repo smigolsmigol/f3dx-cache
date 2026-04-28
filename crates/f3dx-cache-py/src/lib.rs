@@ -81,6 +81,24 @@ impl PyCache {
         Ok(res.map(|b| PyBytes::new(py, &b)))
     }
 
+    /// Read-only lookup: skips the hit-count bump for sub-100us warm hits.
+    /// Use this when stats accuracy is not needed - typical case is CI
+    /// replay against a captured trace, where the cardinality of cache
+    /// hits is already known.
+    fn peek<'py>(
+        &self,
+        py: Python<'py>,
+        request_json: &str,
+    ) -> PyResult<Option<Bound<'py, PyBytes>>> {
+        let value: serde_json::Value =
+            serde_json::from_str(request_json).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let cache = self.inner.lock().expect("cache mutex poisoned");
+        let res = cache
+            .peek(&value)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok(res.map(|b| PyBytes::new(py, &b)))
+    }
+
     fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let cache = self.inner.lock().expect("cache mutex poisoned");
         let s = cache
