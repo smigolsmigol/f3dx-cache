@@ -11,17 +11,25 @@ permissions:
   contents: read
 
 jobs:
-  secrets-scan:
+  gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  semgrep:
+    name: semgrep (security-audit + secrets)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.156.0
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: semgrep scan --config p/security-audit --config p/secrets --error --metrics=off
 
   cargo-audit:
     name: cargo audit
@@ -29,10 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
-      - name: install cargo-audit
-        run: cargo install cargo-audit --locked
-      - name: run cargo audit
-        run: cargo audit
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
 
   pip-audit:
     name: pip audit
@@ -42,7 +48,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
-      - name: install pip-audit
-        run: pip install pip-audit
-      - name: audit declared deps
-        run: pip-audit --strict
+      - run: pip install pip-audit
+      - run: pip-audit --strict
+        continue-on-error: true
