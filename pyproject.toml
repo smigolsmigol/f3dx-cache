@@ -1,11 +1,11 @@
 [build-system]
-requires = ["maturin>=1.13,<2.0"]
-build-backend = "maturin"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "f3dx-cache"
-version = "0.0.3"
-description = "Content-addressable LLM response cache + replay layer. redb + RFC 8785 JCS + BLAKE3. Drop-in for f3dx, openai, anthropic."
+version = "0.0.4"
+description = "DEPRECATED. Consolidated into f3dx[cache]. Install `f3dx` and import from `f3dx.cache`."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -13,30 +13,34 @@ authors = [
     { name = "Federico Benini", email = "smigolsmigol@protonmail.com" },
 ]
 classifiers = [
+    "Development Status :: 7 - Inactive",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Testing",
     "License :: OSI Approved :: MIT License",
 ]
-
-[project.optional-dependencies]
-pytest = ["pytest>=8.0"]
-dev = [
-    "pytest>=8.0",
-    "ruff>=0.7",
-    "mypy>=1.10",
+# Final transition release. Re-exports from the new location at f3dx.cache;
+# emits DeprecationWarning on import. Will be yanked from PyPI 4-6 months
+# after this release lands so existing installs still resolve in the
+# deprecation window. New users: `pip install f3dx[cache]`.
+dependencies = [
+    "f3dx>=0.0.18",
 ]
 
 [project.entry-points.pytest11]
+# Keep the pytest plugin registered so existing test rigs keep finding
+# the @pytest.mark.f3dx_cache marker. The plugin re-imports from the
+# shimmed `f3dx_cache.Cache` which now points at f3dx.cache.Cache.
 f3dx_cache = "f3dx_cache.pytest_plugin"
 
-[tool.maturin]
-manifest-path = "crates/f3dx-cache-py/Cargo.toml"
-module-name = "f3dx_cache._native"
-features = ["pyo3/extension-module"]
-python-source = "python"
+[tool.hatch.build.targets.wheel]
+packages = ["python/f3dx_cache"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
+[tool.hatch.build.targets.sdist]
+include = [
+    "python/f3dx_cache",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
